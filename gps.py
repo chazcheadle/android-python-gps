@@ -1,8 +1,9 @@
 import android, time
+import requests
+import sys
 
-# Convert meters to feet
 def m_toft(m):
-  return format(m * 3.2808, '.2f')
+  return int(m * 3.2808)
 
 # convert d.dddd to d°m's"
 def to_dms(point):
@@ -13,40 +14,68 @@ def to_dms(point):
     sec = (abs(float(point) - deg) - min/60) * 3600
     return str(deg) + "°" + str(min) + "\'" + str(format(sec, '.4f')) + "\""
 
+def usgs_alt(lat, lon):
+  url = 'http://nationalmap.gov/epqs/pqs.php'
+  params = {'x':lon, 'y':lat, 'units':'Meters', 'output':'json'}
+  try:
+    r = requests.get(url, params=params)
+  except requests.exceptions.RequestException as e:
+    print(e)
+    sys.exit(1)
+  if (r.status_code == 200):
+    try:
+      data = r.json()
+    except e:
+      print(e)
+      sys.exit(1)
+
+    alt = data['USGS_Elevation_Point_Query_Service']['Elevation_Query']['Elevation']
+    print('USGS alt: ' + str(format(alt, '.1f')) + 'm')
+    
+def print_location(data):
+  prov = n['provider']
+  accr_m = n['accuracy']
+  accr_f = m_toft(accr_m)
+  lat_dd = n['latitude']
+  lon_dd = n['longitude']
+  lat_dms = to_dms(lat_dd)
+  lon_dms = to_dms(lon_dd)
+  speed_kph = int(n['speed']) * 3.6
+  speed_mph = speed_kph * 0.621
+  bearing = n['bearing']
+  alt_m = n['altitude']
+  alt_f = m_toft(alt_m)
+
+  print('source: ' + prov)
+  print('accuracy: ' + str(accr_m) + 'm / ' + str(accr_f) + 'ft')
+  print('lat/lon: ' + str(format(lat_dd, '.6f')) + ', '+ str(format(lon_dd, '.6f')))
+  print('         ' + lat_dms + ', ' + lon_dms)
+  if prov == 'gps':
+    print('speed: ' + str(format(speed_kph, '.1f')) + 'kph / ' + str(format(speed_mph, '.1f')) + 'mph')
+    print('bearing: ' + str(format(bearing, '.1f')))
+    print('alt: ' + str(alt_m) + 'm / ' + str(alt_f) + 'ft')
+
+  usgs_alt(lat_dd, lon_dd)
+
+#  address = droid.geocode(lat_dd, lon_dd).result
+#  print(address)
+
 droid = android.Android() 
 droid.startLocating()
-
 print('searching for your location')
-time.sleep(15)
 
+time.sleep(15)
 loc = droid.readLocation().result
 
 if not loc:
   loc = droid.getLastKnownLocation().result
-  print('using last known location')
-  try:
-    n = loc['gps']
-  except KeyError:
-    n = loc['network']
+  print(' ... using last known location')
+try:
+  n = loc['gps']
+except KeyError:
+  n = loc['network']
 
-prov = n['provider']
-accr_m = n['accuracy']
-accr_f = m_toft(accr_m)
-lat_dd = n['latitude']
-lon_dd = n['longitude']
-lat_dms = to_dms(lat_dd)
-lon_dms = to_dms(lon_dd)
-speed_kph = n['speed']
-alt_m = n['altitude']
-alt_f = m_toft(alt_m)
-
-print('source: ' + str(prov))
-print('accuracy: ' + str(accr_m) + 'm / ' + str(accr_f) + 'ft')
-print('lat/lon: ' + str(format(lat_dd, '.6f')) + ', '+ str(format(lon_dd, '.6f')))
-print('         ' + lat_dms + ', ' + lon_dms)
-print('speed: ' + str(speed_kph) + 'kph / ')
-print('alt: ' + str(alt_m) + 'm / ' + str(alt_f) + 'ft')
-#address = droid.geocode(lat, lon).result
+print_location(n)
 
 droid.stopLocating()
     
