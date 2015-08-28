@@ -8,10 +8,11 @@ import gpxpy.gpx
 droid = android.Android()
 
 # Time in seconds to warm up GPS
-warm_up = 15
+warm_up = 1
 
+# convert meters to feet
 def m_toft(m):
-  return m * 3.2808
+  return float(m) * 3.2808
 
 # convert d.dddd to d°m's"
 def to_dms(point):
@@ -22,6 +23,7 @@ def to_dms(point):
     sec = (abs(float(point) - deg) - min/60) * 3600
     return str(deg) + "°" + str(min) + "\'" + str(format(sec, '.4f')) + "\""
 
+# retrieve USGS altitude
 def usgs_alt(lat, lon):
   url = 'http://nationalmap.gov/epqs/pqs.php'
   params = {'x':lon, 'y':lat, 'units':'Meters', 'output':'json'}
@@ -37,48 +39,43 @@ def usgs_alt(lat, lon):
       print(e)
       sys.exit(1)
 
-    alt = data['USGS_Elevation_Point_Query_Service']['Elevation_Query']['Elevation']
-    print('USGS alt: ' + str(format(alt, '.1f')) + 'm / ' + str(format(m_toft(alt), '.1f')) + 'ft')
+    alt = float(data['USGS_Elevation_Point_Query_Service']['Elevation_Query']['Elevation'])
+#    print('USGS alt: ' + str(format(alt, '.1f')) + 'm / ' + str(format(m_toft(alt), '.1f')) + 'ft')
+    return alt
 
+# create class to store location data
 class Data(object):
   def __init__(self, loc):
     self.prov = loc['provider']
-    self.accr_m = loc['accuracy']
-    self.accr_f = m_toft(self.accr_m)
-    self.lat_dd = loc['latitude']
-    self.lon_dd = loc['longitude']
+    self.accr_m = format(loc['accuracy'], '.1f')
+    self.accr_f = format(m_toft(self.accr_m), '.1f')
+    self.lat_dd = format(loc['latitude'], '.6f')
+    self.lon_dd = format(loc['longitude'], '.6f')
     self.lat_dms = to_dms(self.lat_dd)
     self.lon_dms = to_dms(self.lon_dd)
-    self.speed_kph = int(loc['speed']) * 3.6
-    self.speed_mph = self.speed_kph * 0.621
+    self.speed_kph = format(int(loc['speed']) * 3.6, '.1f')
+    self.speed_mph = format(float(self.speed_kph) * 0.621, '.1f')
     self.bearing = loc['bearing']
+    self.direction = ''
     self.alt_m = loc['altitude']
     self.alt_f = format(m_toft(self.alt_m), '.1f')
+    self.usgs_alt_m = format(usgs_alt(self.lat_dd, self.lon_dd), '.1f')
+    self.usgs_alt_f = format(m_toft(self.usgs_alt_m), '.1f')
 
-def print_location(loc):
-  data = Data(loc)
-  accr_m = loc['accuracy']
-  accr_f = m_toft(accr_m)
-  lat_dd = loc['latitude']
-  lon_dd = loc['longitude']
-  lat_dms = to_dms(lat_dd)
-  lon_dms = to_dms(lon_dd)
-  speed_kph = int(loc['speed']) * 3.6
-  speed_mph = speed_kph * 0.621
-  bearing = loc['bearing']
-  alt_m = loc['altitude']
-  alt_f = format(m_toft(alt_m), '.1f')
+# format and print location
+def print_location(data):
+#  data = Data(loc)
 
   print('source: ' + data.prov)
-  print('accuracy: ' + str(format(accr_m, '.1f')) + 'm / ' + str(format(accr_f, '.1f')) + 'ft')
-  print('lat/lon: ' + str(format(lat_dd, '.6f')) + ', '+ str(format(lon_dd, '.6f')))
-  print('         ' + lat_dms + ', ' + lon_dms)
+  print('accuracy: ' + str(data.accr_m) + 'm / ' + str(data.accr_f) + 'ft')
+  print('lat/lon: ' + str(data.lat_dd) + ', '+ str(data.lon_dd))
+  print('         ' + data.lat_dms + ', ' + data.lon_dms)
   if data.prov == 'gps':
-    print('speed: ' + str(format(speed_kph, '.1f')) + 'kph / ' + str(format(speed_mph, '.1f')) + 'mph')
-    print('bearing: ' + str(format(bearing, '.1f')))
-    print('alt: ' + str(alt_m) + 'm / ' + str(alt_f) + 'ft')
+    print('speed: ' + str(data.speed_kph) + 'kph / ' + str(data.speed_mph) + 'mph')
+    print('bearing: ' + str(data.bearing))
+    print('alt: ' + str(data.alt_m) + 'm / ' + str(data.alt_f) + 'ft')
 
-  usgs_alt(lat_dd, lon_dd)
+#  usgs_alt(data.lat_dd, data.lon_dd)
 
   droid.dialogCreateAlert("Results","line1\nline2")
   droid.dialogSetPositiveButtonText("Map")
@@ -95,7 +92,7 @@ def print_location(loc):
     if result == 'neutral':
       # copy
       droid.setClipboard( str(lat_dd) + ',' + str(lon_dd))
-      write_gpx(data)
+#      write_gpx(data)
     if result == 'negative':
       sys.exit()
 
@@ -104,6 +101,24 @@ def print_location(loc):
   
 def bearing_to_box(deg):
   dir = int(deg)
+  if dir >= 337.5 and dir <= 22.5:
+    direction = 'North'
+  if dir > 22.5 and dir <= 67.5:
+    direction = 'Northeast'
+  if dir > 67.5 and dir <= 112.5:
+    direction = 'North'
+  if dir > 112.5 and dir <= 157.5:
+    direction = 'North'
+  if dir > 157.5 and dir <= 202.5:
+    direction = 'North'
+  if dir > 247.5 and dir <= 292.5:
+    direction = 'North'
+  if dir > 292.5 and dir <= 337.5:
+    direction = 'North'
+  if dir > 325 and dir <= 22.5:
+    direction = 'North'
+
+  return direction
 
 def start_gps(warm_up):
   droid.startLocating()
@@ -120,16 +135,19 @@ def start_gps(warm_up):
     droid.dialogSetCurrentProgress(p)
     p+=1
   droid.dialogDismiss()
-  loc = droid.readLocation().result
 
-  if not loc:
-    loc = droid.getLastKnownLocation().result
-    print('        using last known location')
+def get_location():
+  result = droid.readLocation().result
+
+  if not result:
+    result = droid.getLastKnownLocation().result
   try:
-    n = loc['gps']
+    loc = result['gps']
   except KeyError:
-    n = loc['network']
-  return n
+    loc = result['network']
+
+  data = Data(loc)
+  return data
 
 def write_gpx(data):
 
@@ -137,26 +155,24 @@ def write_gpx(data):
 
   gpx = gpxpy.gpx.GPX()
 
-  # Create first track in our GPX:
+#  gpx = gpxpy.parse(gpx_file)
+
   gpx_track = gpxpy.gpx.GPXTrack()
   gpx.tracks.append(gpx_track)
 
-  # Create first segment in our GPX track:
   gpx_segment = gpxpy.gpx.GPXTrackSegment()
   gpx_track.segments.append(gpx_segment)
 
-  # Create points:
   gpx_segment.points.append(gpxpy.gpx.GPXTrackPoint(data.lat_dd, data.lon_dd, elevation=data.alt_m))
 
   gpx_file.write(gpx.to_xml())
-
   gpx_file.close()
 
 
-loc = start_gps(warm_up)
+start_gps(warm_up)
+data = get_location()
 droid.stopLocating()
-print_location(loc)
-
+print_location(data)
 
 sys.exit()
     
